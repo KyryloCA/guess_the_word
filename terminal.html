@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fallout Terminal Solver v1.0</title>
+    <link rel=apple-touch-icon sizes=192x192 href=/assets/icon.png><link
+    rel="shortcut icon" type=image/x-icon href=/favicon.ico>
+    <meta name="format-detection" content="telephone=no" />
+    <style>
+      body {
+        font-family: Monaco, monospace;
+        background: #000;
+        margin: 0;
+        color: #9f9;
+      }
+      #term {
+        background: #36301d;
+        border: 5px solid #504030;
+        -webkit-border-radius: 20px;
+        -moz-border-radius: 20px;
+        border-radius: 20px;
+        margin: 10px;
+        text-shadow: 0 0 3px #9f9;
+      }
+      #term > div {
+        background: #020;
+        border: 5px solid #363;
+        -webkit-border-radius: 20px;
+        -moz-border-radius: 20px;
+        border-radius: 20px;
+        margin: 10px;
+        min-height: 100px;
+        font-weight: 700;
+        padding: 10px 20px;
+        position: relative;
+        box-shadow: inset 10px 10px 40px black;
+      }
+      #term ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #controls {
+        position: absolute;
+        top: 10px;
+        right: 20px;
+        padding: 0;
+      }
+      #instructions {
+        margin-left: 5ex;
+        margin-right: 5ex;
+      }
+      h1 {
+        text-align: center;
+      }
+      h2 {
+        text-align: center;
+      }
+      #input {
+        font-size: 1.5em;
+        text-align: center;
+      }
+      #input input {
+        font-size: 1.2em;
+      }
+      li a {
+        color: inherit;
+        text-decoration: none;
+        font-weight: inherit;
+      }
+      .dim {
+        color: #696;
+        text-shadow: 0 0 3px #696;
+      }
+      .cross {
+        color: #900;
+        text-shadow: 0 0 3px #900;
+        text-decoration: line-through;
+      }
+      #error {
+        text-align: center;
+        color: #f66;
+        text-shadow: 0 0 3px #f66;
+      }
+    </style>
+    <!-- <link rel=canonical href=https://www.moria.us/fallout3/terminal>
+    <meta property="og:site_name" content="moria.us" />
+    <meta property="og:url" content="https://www.moria.us/fallout3/terminal" />
+    <meta property="og:title" content="Fallout Terminal Solver v1.0" />
+    <meta
+      property="og:description"
+      content="Solve terminals in Fallout 3, Fallout New Vegas, Fallout 4, and Fallout 76—without getting locked out."
+    />
+    <meta
+      property="og:image"
+      content="https://www.moria.us/assets/card.a0aa82ab614172c2.png"
+    />
+    <meta name="twitter:creator" content="@DietrichEpp" />
+    <meta name="twitter:card" content="summary" /> -->
+  </head>
+  <body>
+    <h1>Fallout Terminal Solver v1.0</h1>
+    <noscript><p>This requires JavaScript!</p></noscript>
+    <div id="term" style="visibility: hidden">
+      <div>
+        <ul id="words"></ul>
+        <div id="controls">
+          <ul>
+            <li><a id="clear" href>[clear]</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div id="input" style="visibility: hidden">
+      Enter words: <input width="12" id="text" />
+    </div>
+    <p id="error" style="visibility: hidden">err</p>
+    <div id="instructions">
+      <h2>Instructions</h2>
+      <p>
+        Type in the words that appear on the console you are hacking. If you try
+        a password, click on the number of letters for that password which are
+        different from the real password. The number of moves listed is the
+        maximum number of moves necessary to hack the terminal if you select
+        that word and play perfectly. Choose the word with the lowest number of
+        moves.
+      </p>
+    </div>
+    <script>
+      var elt_input,
+        elt_words,
+        elt_err,
+        g_words = [],
+        g_len = 0;
+      ELEMENT_NODE = 1;
+
+      function init() {
+        document.getElementById("term").style.visibility = "visible";
+        document.getElementById("input").style.visibility = "visible";
+        elt_input = document.getElementById("text");
+        elt_words = document.getElementById("words");
+        elt_err = document.getElementById("error");
+        elt_input.value = "";
+        elt_input.onkeypress = input_keyup;
+        elt_input.focus();
+        var elt_clear = document.getElementById("clear");
+        elt_clear.onclick = function () {
+          removeChildren(elt_words);
+          g_words = [];
+          g_len = 0;
+          return false;
+        };
+      }
+
+      function errset(msg) {
+        elt_err.innerHTML = "ERROR: " + msg;
+        elt_err.style.visibility = "visible";
+      }
+
+      function errclear() {
+        elt_err.style.visibility = "hidden";
+      }
+
+      function matches(x, y) {
+        var c = 0;
+        for (var i = 0; i < g_len; ++i) if (x[i] == y[i]) c += 1;
+        return c;
+      }
+
+      function removeChildren(n) {
+        while (n.hasChildNodes()) n.removeChild(n.lastChild);
+      }
+
+      function Word() {}
+
+      Word.prototype.setmatches = function (x) {
+        var all = !this.initted;
+        var y = this.matches;
+        initted = true;
+        for (var i = 0; i < g_len; ++i) {
+          var c;
+          if (x === i) {
+            c = "";
+            t = "[" + i + "]";
+          } else if (y === i || all) {
+            c = "dim";
+            t = "-" + i + "-";
+          } else {
+            continue;
+          }
+          var e = this.arr[i];
+          removeChildren(e);
+          e.appendChild(document.createTextNode(t));
+          e.className = c;
+        }
+        this.matches = x;
+      };
+
+      Word.prototype.update = function () {
+        var c;
+        if (this.matches === null) {
+          var j;
+          for (j = 0; j < g_words.length; ++j) {
+            var w = g_words[j];
+            if (
+              w !== null &&
+              w.matches !== null &&
+              matches(w.word, this.word) != w.matches
+            )
+              break;
+          }
+          if (j == g_words.length) c = "";
+          else c = "cross";
+        } else {
+          c = "dim";
+        }
+        this.element.className = c;
+      };
+
+      Word.prototype.remove = function () {
+        this.list_elt.parentNode.removeChild(this.list_elt);
+        for (var i = 0; i < g_words.length; ++i) {
+          if (g_words[i] === this) {
+            g_words.splice(i, 1);
+            break;
+          }
+        }
+        if (g_words.length == 0) g_len = 0;
+      };
+
+      /* The maximum number of moves required to win, assuming the worst case,
+   assuming you pick 'word' next, and assuming perfect play.  */
+      function maxmoves(wordset, word) {
+        var diffs = [];
+        for (var i = 0; i < wordset.length; ++i) {
+          if (wordset[i] == word) continue;
+          var n = matches(word, wordset[i]);
+          for (j = 0; j < diffs.length; ++j) {
+            if (diffs[j][0] == n) {
+              diffs[j][1].push(wordset[i]);
+              break;
+            }
+          }
+          if (j == diffs.length) diffs.push([n, [wordset[i]]]);
+        }
+        var worst = 0;
+        for (var i = 0; i < diffs.length; ++i) {
+          var best = null;
+          var subset = diffs[i][1];
+          for (var j = 0; j < subset.length; ++j) {
+            var x = maxmoves(subset, subset[j]);
+            if (best === null || x < best) best = x;
+          }
+          if (worst < best) worst = best;
+        }
+        return worst + 1;
+      }
+
+      function updateall() {
+        for (var i = 0; i < g_words.length; ++i) g_words[i].update();
+        var attempt = 0;
+        words = [];
+        attempts = 0;
+        for (var i = 0; i < g_words.length; ++i) {
+          var w = g_words[i];
+          if (w.matches !== null) {
+            attempts += 1;
+            continue;
+          }
+          var j;
+          for (j = 0; j < g_words.length; ++j) {
+            var ww = g_words[j];
+            if (ww.matches !== null && matches(ww.word, w.word) != ww.matches)
+              break;
+          }
+          if (j === g_words.length) words.push(w.word);
+        }
+        for (var i = 0; i < g_words.length; ++i) {
+          var w = g_words[i];
+          removeChildren(w.stars);
+          if (w.matches !== null) continue;
+          var j;
+          for (j = 0; j < words.length; ++j) if (words[j] === w.word) break;
+          if (j === words.length) continue;
+          var moves = maxmoves(words, w.word);
+          var t = document.createTextNode("" + moves + " moves");
+          w.stars.appendChild(t);
+        }
+      }
+
+      function add_word(w) {
+        var word = new Word();
+        g_words.push(word);
+        var e = document.createElement("LI");
+        elt_words.appendChild(e);
+
+        word.word = w;
+        word.list_elt = e;
+
+        var tt, te;
+
+        tt = document.createTextNode("[del]");
+        te = document.createElement("A");
+        te.href = "#";
+        te.onclick = function () {
+          word.remove();
+          return false;
+        };
+        te.appendChild(tt);
+        e.appendChild(te);
+
+        tt = document.createTextNode(" ");
+        e.appendChild(tt);
+
+        tt = document.createTextNode(w);
+        te = document.createElement("A");
+        te.href = "#";
+        te.onclick = function () {
+          word.setmatches(null);
+          updateall();
+          return false;
+        };
+        word.element = te;
+        te.appendChild(tt);
+        e.appendChild(te);
+
+        var arr = [];
+        word.arr = arr;
+        for (var j = 0; j < g_len; ++j) {
+          tt = document.createTextNode(" ");
+          e.appendChild(tt);
+          te = document.createElement("A");
+          te.href = "#";
+          te.onclick = (function (x) {
+            return function () {
+              word.setmatches(x);
+              updateall();
+              return false;
+            };
+          })(j);
+          arr.push(te);
+          e.appendChild(te);
+        }
+
+        tt = document.createTextNode(" ");
+        e.appendChild(tt);
+
+        te = document.createElement("SPAN");
+        e.appendChild(te);
+        word.stars = te;
+
+        word.setmatches(null);
+        updateall();
+      }
+
+      function input_keyup(event) {
+        if (event.keyCode == 13) {
+          var word = elt_input.value.toUpperCase().replace(/[^A-Z]/, "");
+          if (!word) return;
+          if (!g_len) {
+            g_len = word.length;
+          } else if (g_len != word.length) {
+            errset("Mismatched word length.");
+            return;
+          }
+          elt_input.value = "";
+          add_word(word);
+        } else if (elt_input.value.length > 0) {
+          errclear();
+        }
+      }
+
+      window.onload = init;
+    </script>
+  </body>
+</html>
